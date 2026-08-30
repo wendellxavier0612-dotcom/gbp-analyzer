@@ -34,8 +34,17 @@ class Criterio:
     def rodar(self, dados: dict) -> ResultadoCriterio:
         resultado = self.avaliar(dados)
         if resultado is None:
-            return ResultadoCriterio(self.chave, self.nome, self.categoria, Nivel.NAO_VERIFICADO, 0,
-                "Não há dados confiáveis disponíveis para verificar este item.", self.acesso)
+            # Mensagem diferente conforme o MOTIVO de não ter dado: item que
+            # exige login de administrador, item que nenhuma fonte pública
+            # expõe hoje (parcial), ou item público que só não veio nesta
+            # busca específica (site fora do ar, perfil incompleto etc.).
+            if self.acesso == Acesso.ADMIN:
+                msg = "Este item só pode ser avaliado com acesso de administrador ao Perfil da Empresa."
+            elif self.acesso == Acesso.PARCIAL:
+                msg = "Não é possível confirmar este item com as fontes públicas atuais (o Google não expõe esse dado via busca)."
+            else:
+                msg = "Não foi possível verificar este item com os dados disponíveis nesta busca."
+            return ResultadoCriterio(self.chave, self.nome, self.categoria, Nivel.NAO_VERIFICADO, 0, msg, self.acesso)
         resultado.acesso = self.acesso
         return resultado
 
@@ -55,7 +64,13 @@ def _avaliar_categoria(d):
 def _avaliar_servicos(d):
     v=d.get("servicos")
     if v is None:return None
-    return ResultadoCriterio("servicos","Serviços Cadastrados","Identidade",Nivel.BOM if len(v)>=3 else Nivel.RAZOAVEL if v else Nivel.FRACO,min(100,int(len(v)/3*100)),f"{len(v)} serviço(s) cadastrados (mínimo recomendado: 3).")
+    # v aqui é uma lista de ATRIBUTOS públicos do perfil (ex: "Takeaway",
+    # "Delivery"), não a lista de serviços com nome/preço que o dono
+    # cadastra no painel — essa não é exposta em nenhuma fonte pública.
+    msg=(f"{len(v)} atributo(s) de serviço identificado(s) publicamente ({', '.join(v)}). "
+         f"A lista completa cadastrada no painel (com nome e preço) só é visível com acesso de administrador.") if v else \
+        "Nenhum atributo de serviço público identificado."
+    return ResultadoCriterio("servicos","Serviços Cadastrados","Identidade",Nivel.BOM if len(v)>=3 else Nivel.RAZOAVEL if v else Nivel.FRACO,min(100,int(len(v)/3*100)),msg)
 def _avaliar_data_fundacao(d):
     v=d.get("data_fundacao")
     if v is None:return None
@@ -64,7 +79,7 @@ def _avaliar_horario(d): return _sim(bool(d.get("horario_funcionamento")),"horar
 def _avaliar_horario_especial(d):
     v=d.get("horario_especial")
     if v is None:return None
-    return ResultadoCriterio("horario_especial","Horário Especial (feriados)","Horários",Nivel.BOM if v else Nivel.FRACO,100 if v else 0,"Horário especial definido." if v else "Nenhum horário especial informado.")
+    return ResultadoCriterio("horario_especial","Horário Especial (feriados)","Horários",Nivel.BOM if v else Nivel.FRACO,100 if v else 0,"Horário especial definido." if v else "Nenhum horário especial informado pela empresa.")
 def _avaliar_descricao(d):
     v=d.get("descricao")
     if v is None:return None
@@ -101,7 +116,8 @@ def _avaliar_qtd_midia(d):
     return ResultadoCriterio("qtd_midia","Quantidade Total de Mídia","Mídia",nivel,min(100,int(total/8*100)) if total else 0,f"{total} mídia(s) coletada(s), separadas entre fotos e vídeos.")
 def _avaliar_foto_capa(d): return _sim(bool(d.get("tem_foto_capa")),"foto_capa","Foto de Capa","Mídia","Foto de capa identificada.","Não foi identificada foto de capa.")
 def _avaliar_logotipo(d):
-    # A fonte pode ser o próprio perfil ou uma foto de perfil social confirmada.
+    # A fonte pode ser o próprio perfil, o site oficial (og:image/favicon)
+    # ou uma foto de perfil social confirmada — nessa ordem de prioridade.
     v=d.get("logo_url") or d.get("instagram",{}).get("foto_perfil")
     if not v:return None
     return ResultadoCriterio("logotipo","Logotipo / Imagem de Perfil","Mídia",Nivel.BOM,100,"Imagem de perfil/logo identificada e disponível.",Acesso.PARCIAL)
