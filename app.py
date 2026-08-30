@@ -21,7 +21,11 @@ from core.serpapi_client import SerpApiClient
 from core.engine import gerar_relatorio
 from core.criteria import Nivel
 from core.concorrentes import gerar_comparativo
-from core.admin_session import sessao_existe, data_ultima_conexao, desconectar, iniciar_login
+from core.site_scraper import extrair_dados_site
+from core.admin_session import (
+    sessao_existe, data_ultima_conexao, desconectar, iniciar_login,
+    NavegadorIndisponivelError,
+)
 from core.admin_client import coletar_dados_admin
 from core.instagram_client import InstagramClient
 
@@ -67,6 +71,27 @@ def _cidade_do_endereco(endereco):
         if " - " in parte:
             return parte.split(" - ")[0].strip()
     return partes[-2] if len(partes) >= 2 else None
+
+
+def _reforcar_com_site_oficial(dados: dict) -> None:
+    """Quando o Google Maps não trouxe descrição, logo ou instagram, mas
+    o negócio tem um website vinculado, dá uma segunda chance lendo a
+    home page do próprio site — é exatamente onde essas informações
+    costumam estar 'escancaradas', só que fora do alcance da busca do
+    Maps. Só preenche o que estiver faltando; nunca sobrescreve dado que
+    já veio do Google."""
+    website = dados.get("website")
+    falta_algo = not dados.get("descricao") or not dados.get("logo_url") or not dados.get("instagram_url")
+    if not website or not falta_algo:
+        return
+
+    extra = extrair_dados_site(website)
+    if not dados.get("descricao") and extra.get("descricao"):
+        dados["descricao"] = extra["descricao"]
+    if not dados.get("logo_url") and extra.get("logo_url"):
+        dados["logo_url"] = extra["logo_url"]
+    if not dados.get("instagram_url") and extra.get("instagram_url"):
+        dados["instagram_url"] = extra["instagram_url"]
 
 
 def _analisar_instagram(dados, api_key):
@@ -159,12 +184,24 @@ def index():
                         extras = coletar_dados_admin(dados.get("nome") or busca)
                         dados.update(extras)
 
+                    # Reforço com o site oficial ANTES do Instagram: se o
+                    # site tiver o link do perfil, isso melhora bastante a
+                    # chance da busca de Instagram acertar de primeira.
+                    _reforcar_com_site_oficial(dados)
+
                     dados["instagram"] = _analisar_instagram(dados, api_key)
                     # O avatar do Instagram é usado como fallback de logo somente
-                    # quando nenhuma imagem de logo do Google foi identificada.
+                    # quando nenhuma imagem de logo já foi identificada (nem pelo
+                    # Google, nem pelo site oficial).
                     if not dados.get("logo_url") and dados.get("instagram", {}).get("encontrado"):
                         dados["logo_url"] = dados["instagram"].get("foto_perfil")
                     dados["instagram"]["score"] = _score_instagram(dados["instagram"])
+
+                    # Antes esse critério nunca era preenchido mesmo quando a
+                    # gente já tinha achado uma logo (bug); agora reflete o
+                    # que foi realmente encontrado, seja qual for a fonte.
+                    dados["tem_logotipo"] = bool(dados.get("logo_url"))
+
                     modo = "cliente" if usar_admin else "prospeccao"
                     rel = gerar_relatorio(dados, modo=modo)
                     rel.concorrencia = gerar_comparativo(client, dados)
@@ -193,7 +230,15 @@ def admin():
 
 @app.route("/admin/conectar", methods=["POST"])
 def admin_conectar():
-    ok = iniciar_login()
+    try:
+        ok = iniciar_login()
+    except NavegadorIndisponivelError as exc:
+        return render_template(
+            "admin.html",
+            conectado=sessao_existe(),
+            ultima_conexao=data_ultima_conexao(),
+            erro=str(exc),
+        )
     if not ok:
         return render_template(
             "admin.html",
