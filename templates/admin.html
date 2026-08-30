@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Acesso Admin — GBP Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+  .admin-wrap{max-width:640px;margin:0 auto;padding:60px 20px;
+    font-family:var(--f-sans,'Inter',sans-serif);color:var(--text,#e6e6ef);}
+  .admin-voltar{font-family:var(--f-mono,monospace);font-size:13px;
+    color:var(--text-mute,#94a3b8);text-decoration:none;}
+  .admin-voltar:hover{opacity:.7;}
+  .admin-titulo{font-family:var(--f-display,'Space Grotesk',sans-serif);
+    font-size:28px;font-weight:700;margin:14px 0 6px;}
+  .admin-desc{font-size:14px;color:var(--text-mute,#94a3b8);line-height:1.6;margin-bottom:28px;}
+  .admin-card{padding:22px 24px;border-radius:14px;
+    background:var(--card,#171724);border:1px solid var(--border,#2a2a3a);margin-bottom:18px;}
+  .admin-status{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600;margin-bottom:6px;}
+  .bolinha{width:9px;height:9px;border-radius:50%;display:inline-block;}
+  .bolinha.on{background:#34D399;box-shadow:0 0 8px #34D399;}
+  .bolinha.off{background:#64748b;}
+  .admin-meta{font-size:13px;color:var(--text-mute,#94a3b8);font-family:var(--f-mono,monospace);}
+  .admin-btn{margin-top:16px;display:inline-block;padding:11px 20px;border-radius:10px;
+    border:none;font-family:var(--f-sans,'Inter',sans-serif);font-weight:600;font-size:14px;
+    cursor:pointer;transition:opacity .15s;}
+  .admin-btn.conectar{background:#22D3C7;color:#04231f;}
+  .admin-btn.desconectar{background:transparent;color:#FB7185;border:1px solid #FB7185;}
+  .admin-btn:hover{opacity:.85;}
+  .admin-info{font-size:13px;color:var(--text-mute,#94a3b8);line-height:1.7;}
+  .admin-info b{color:var(--text,#e6e6ef);}
+  .admin-erro{margin-top:14px;padding:12px 16px;border-radius:10px;
+    background:rgba(251,113,133,0.1);border:1px solid #FB7185;color:#FB7185;font-size:13px;}
+  .admin-avisando{display:none;margin-top:14px;font-size:13px;color:var(--text-mute,#94a3b8);}
+  .admin-avisando.ativo{display:block;}
+</style>
+</head>
+<body>
+<div class="admin-wrap">
+  <a href="{{ url_for('index') }}" class="admin-voltar">← Voltar pra análise</a>
+  <h1 class="admin-titulo">Acesso Admin</h1>
+  <p class="admin-desc">
+    Conecte sua conta Google (a mesma que administra o Perfil da Empresa
+    dos seus clientes) pra liberar a análise completa — com os critérios
+    que só aparecem com login de administrador, marcados como
+    "Não verificado" nas análises normais.
+  </p>
+
+  <div class="admin-card">
+    <div class="admin-status">
+      <span class="bolinha {{ 'on' if conectado else 'off' }}"></span>
+      {% if conectado %}Conectado{% else %}Não conectado{% endif %}
+    </div>
+    {% if conectado %}
+    <div class="admin-meta">Sessão salva em {{ ultima_conexao }}</div>
+    <form method="post" action="{{ url_for('admin_desconectar') }}">
+      <button type="submit" class="admin-btn desconectar">Desconectar</button>
+    </form>
+    {% else %}
+    <div class="admin-meta">Nenhuma sessão salva ainda.</div>
+    <form method="post" action="{{ url_for('admin_conectar') }}" onsubmit="avisar()">
+      <button type="submit" class="admin-btn conectar" id="btn-conectar">Conectar minha conta Google</button>
+    </form>
+    <div class="admin-avisando" id="avisando">
+      Abrindo uma janela do navegador pra você fazer login — faça o login
+      normalmente (com verificação em duas etapas, se pedir) e a janela
+      fecha sozinha quando terminar. Isso pode levar alguns segundos pra
+      aparecer.
+    </div>
+    {% endif %}
+
+    {% if erro %}
+    <div class="admin-erro">{{ erro }}</div>
+    {% endif %}
+  </div>
+
+  <div class="admin-card">
+    <p class="admin-info">
+      <b>Como funciona:</b> em vez de guardar seu e-mail e senha no
+      programa, a gente abre uma janela de navegador de verdade só pra
+      você logar do jeito normal. O programa salva apenas a sessão
+      (cookies) localmente, no arquivo <code>core/.sessions/admin_session.json</code>
+      — nunca sua senha.<br><br>
+      <b>Importante:</b> esse arquivo dá acesso à sua conta sem senha.
+      Ele fica só na sua máquina — não suba ele pro GitHub nem mande pra
+      ninguém. Se estiver usando Git, adicione <code>core/.sessions/</code>
+      no seu <code>.gitignore</code>.<br><br>
+      <b>Pra usar:</b> depois de conectado, marque a caixinha
+      "Analisar como cliente" na busca principal quando quiser o
+      relatório completo de um perfil que você administra.
+    </p>
+  </div>
+</div>
+
+<script>
+function avisar() {
+  document.getElementById('avisando').classList.add('ativo');
+  const btn = document.getElementById('btn-conectar');
+  btn.disabled = true;
+  btn.textContent = 'Abrindo janela de login…';
+}
+</script>
+</body>
+</html>
