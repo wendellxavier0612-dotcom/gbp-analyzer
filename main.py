@@ -19,6 +19,7 @@ from core.serpapi_client import SerpApiClient
 from core.engine import gerar_relatorio
 from core.criteria import Nivel
 from core.concorrentes import gerar_comparativo
+from core.site_scraper import extrair_dados_site
 from core.admin_session import sessao_existe
 from core.admin_client import coletar_dados_admin
 from core.instagram_client import InstagramClient
@@ -31,6 +32,24 @@ _MARCADOR = {
     Nivel.FRACO: "🔴",
     Nivel.NAO_VERIFICADO: "⚪",
 }
+
+
+def _reforcar_com_site_oficial(dados: dict) -> None:
+    """Ver docstring da mesma função em app.py — só preenche o que
+    faltar (descrição/logo/instagram), lendo o site oficial do negócio,
+    sem nunca sobrescrever o que já veio do Google Maps."""
+    website = dados.get("website")
+    falta_algo = not dados.get("descricao") or not dados.get("logo_url") or not dados.get("instagram_url")
+    if not website or not falta_algo:
+        return
+
+    extra = extrair_dados_site(website)
+    if not dados.get("descricao") and extra.get("descricao"):
+        dados["descricao"] = extra["descricao"]
+    if not dados.get("logo_url") and extra.get("logo_url"):
+        dados["logo_url"] = extra["logo_url"]
+    if not dados.get("instagram_url") and extra.get("instagram_url"):
+        dados["instagram_url"] = extra["instagram_url"]
 
 
 def imprimir_relatorio(rel):
@@ -121,9 +140,13 @@ def main():
         extras = coletar_dados_admin(dados.get("nome") or entrada)
         dados.update(extras)
 
-    dados["instagram"] = InstagramClient(api_key).analisar(dados.get("nome") or entrada)
+    _reforcar_com_site_oficial(dados)
+
+    dados["instagram"] = InstagramClient(api_key).analisar(dados.get("nome") or entrada, instagram_url=dados.get("instagram_url"))
     if not dados.get("logo_url") and dados.get("instagram", {}).get("encontrado"):
         dados["logo_url"] = dados["instagram"].get("foto_perfil")
+    dados["tem_logotipo"] = bool(dados.get("logo_url"))
+
     relatorio = gerar_relatorio(dados, modo="cliente" if usar_admin else "prospeccao")
     relatorio.concorrencia = gerar_comparativo(client, dados)
     imprimir_relatorio(relatorio)
@@ -135,5 +158,7 @@ def main():
         print(f"  Profissional: {ig.get('conta_profissional')} · Empresa: {ig.get('conta_empresa')} · Verificado: {ig.get('verificado')}")
     else:
         print(f"  {ig.get('mensagem', 'Nenhum perfil confirmado.')}")
+
+
 if __name__ == "__main__":
     main()
