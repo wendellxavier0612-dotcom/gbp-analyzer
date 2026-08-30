@@ -17,6 +17,13 @@ NUNCA suba esse arquivo pro GitHub nem mande pra ninguém — adicione a
 linha abaixo no seu .gitignore:
 
     core/.sessions/
+
+⚠️ IMPORTANTE — AMBIENTE HOSPEDADO:
+Esse login abre um navegador de verdade (headless=False), então só
+funciona rodando localmente no seu computador. Num servidor hospedado
+(Render, etc.) não existe tela nem navegador gráfico disponível — nesse
+caso, a função levanta NavegadorIndisponivelError em vez de quebrar com
+erro 500.
 """
 
 from datetime import datetime
@@ -29,6 +36,12 @@ SESSAO_ARQUIVO = SESSAO_DIR / "admin_session.json"
 # painel do Perfil da Empresa depois de autenticar.
 URL_LOGIN = "https://accounts.google.com/ServiceLogin?continue=https://business.google.com/locations"
 URL_PAINEL = "https://business.google.com/**"
+
+
+class NavegadorIndisponivelError(Exception):
+    """Levantado quando o Chromium do Playwright não está instalado/disponível
+    no ambiente atual — típico de servidores hospedados (Render, etc.), que
+    não têm tela nem navegador gráfico disponível para o login manual."""
 
 
 def sessao_existe() -> bool:
@@ -59,6 +72,10 @@ def iniciar_login(timeout_min: int = 10) -> bool:
     Devolve True se salvou a sessão, False se deu timeout ou a janela
     foi fechada antes de completar o login.
 
+    Levanta NavegadorIndisponivelError se o Chromium do Playwright não
+    estiver disponível no ambiente atual (ex: servidor hospedado sem
+    tela gráfica) — em vez de deixar o erro técnico subir cru.
+
     Requer o navegador do Playwright instalado uma vez, com:
         playwright install chromium
     """
@@ -67,7 +84,15 @@ def iniciar_login(timeout_min: int = 10) -> bool:
     SESSAO_DIR.mkdir(parents=True, exist_ok=True)
 
     with sync_playwright() as p:
-        navegador = p.chromium.launch(headless=False)
+        try:
+            navegador = p.chromium.launch(headless=False)
+        except Exception as exc:
+            raise NavegadorIndisponivelError(
+                "Esse recurso (login de administrador) só funciona rodando o "
+                "programa no seu computador (python app.py) — o ambiente hospedado "
+                "não tem tela nem navegador gráfico disponível para o login manual."
+            ) from exc
+
         contexto = navegador.new_context()
         pagina = contexto.new_page()
         pagina.goto(URL_LOGIN)
